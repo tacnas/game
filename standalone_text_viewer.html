@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>テキストビューア</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+
+        /* Markdown styles */
+        .md-content h1 { font-size: 1.6em; font-weight: bold; margin: 1em 0 0.5em; border-bottom: 1px solid #555; padding-bottom: 0.3em; }
+        .md-content h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.4em; border-bottom: 1px solid #444; padding-bottom: 0.2em; }
+        .md-content h3 { font-size: 1.1em; font-weight: bold; margin: 0.8em 0 0.3em; }
+        .md-content p  { margin: 0.6em 0; line-height: 1.8; }
+        .md-content ul, .md-content ol { margin: 0.5em 0 0.5em 1.5em; }
+        .md-content li { margin: 0.2em 0; line-height: 1.7; }
+        .md-content strong { font-weight: bold; }
+        .md-content em { font-style: italic; }
+        .md-content code { font-family: monospace; background: rgba(128,128,128,0.2); padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+        .md-content pre { background: rgba(0,0,0,0.3); padding: 1em; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
+        .md-content pre code { background: none; padding: 0; }
+        .md-content blockquote { border-left: 3px solid #555; margin: 0.5em 0; padding: 0.3em 1em; opacity: 0.8; }
+        .md-content hr { border: none; border-top: 1px solid #555; margin: 1em 0; }
+        .md-content table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+        .md-content th, .md-content td { border: 1px solid #555; padding: 6px 12px; text-align: left; }
+        .md-content th { background: rgba(128,128,128,0.2); font-weight: bold; }
+        .md-content tr:nth-child(even) { background: rgba(128,128,128,0.08); }
+        .md-content a { color: #60a5fa; text-decoration: underline; }
+
+        /* Vertical writing mode styles */
+        .vertical-container {
+            writing-mode: vertical-rl;
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: calc(100vh - 44px);
+            display: flex;
+        }
+        .vertical-container .md-content table {
+            writing-mode: horizontal-tb;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // ── 定数 ──────────────────────────────────────────────
+        const BG_COLORS = ['#1a1a1a', '#2d2d2d', '#333333', '#000000', '#f5f5f5', '#ffffff'];
+        const FONT_MIN = 10, FONT_MAX = 32, FONT_DEFAULT = 18;
+        const SCROLL_INTERVAL = 50;
+
+        const FONTS = {
+            mincho:  '"游明朝", "Yu Mincho", "Noto Serif JP", Georgia, serif',
+            gothic:  '"游ゴシック", "Yu Gothic", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif',
+        };
+
+        // 背景色の輝度から文字色を決定
+        function getTextColor(bg) {
+            const hex = bg.replace('#', '');
+            const r = parseInt(hex.substr(0,2),16);
+            const g = parseInt(hex.substr(2,2),16);
+            const b = parseInt(hex.substr(4,2),16);
+            const luminance = (0.299*r + 0.587*g + 0.114*b) / 255;
+            return luminance > 0.5 ? '#1a1a1a' : '#e0e0e0';
+        }
+
+        // ── ナチュラルソート ──────────────────────────────────
+        const KANJI_NUM = { '〇':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,'百':100,'千':1000 };
+        const HENSEN = { '前編': '000.1', '中編': '000.5', '後編': '000.9' };
+
+        function kanjiToNum(str) {
+            // 前編/中編/後編
+            for (const [k, v] of Object.entries(HENSEN)) {
+                if (str.includes(k)) return str.replace(k, v);
+            }
+            // 漢数字 → 算用数字（簡易版：十・百・千対応）
+            return str.replace(/[一二三四五六七八九〇十百千]+/g, m => {
+                let n = 0, tmp = 0;
+                for (const c of m) {
+                    const v = KANJI_NUM[c] ?? 0;
+                    if (v >= 10) { n += (tmp || 1) * v; tmp = 0; }
+                    else tmp = v;
+                }
+                return String(n + tmp);
+            });
+        }
+
+        function normalizeForSort(name) {
+            let s = name;
+            s = s.replace(/第(\S+?)話/g, (_, n) => n); // 「第N話」→ Nのみ
+            s = kanjiToNum(s);
+            return s;
+        }
+
+        const collator = new Intl.Collator('ja', { numeric: true, sensitivity: 'base' });
+
+        function naturalSort(a, b) {
+            return collator.compare(normalizeForSort(a), normalizeForSort(b));
+        }
+
+        // ── marked.js 設定 ────────────────────────────────────
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({ gfm: true, breaks: true });
+        }
+
+        // ── メインコンポーネント ──────────────────────────────
+        function TextViewer() {
+            const [chapters, setChapters]           = useState([]);
+            const [currentIndex, setCurrentIndex]   = useState(0);
+            const [textContent, setTextContent]     = useState('');
+            const [isLoading, setIsLoading]         = useState(false);
+            const [writingMode, setWritingMode]     = useState('horizontal');
+            const [fontSize, setFontSize]           = useState(FONT_DEFAULT);
+            const [fontFamily, setFontFamily]       = useState('mincho');
+            const [backgroundColor, setBackgroundColor] = useState('#1a1a1a');
+            const [autoScroll, setAutoScroll]       = useState(false);
+            const [scrollSpeed, setScrollSpeed]     = useState(20);
+            const [showChapterList, setShowChapterList] = useState(false);
+
+            const scrollRef    = useRef(null);
+            const autoScrollRef = useRef(null);
+            const chaptersRef  = useRef(chapters);
+            const indexRef     = useRef(currentIndex);
+
+            useEffect(() => { chaptersRef.current = chapters; }, [chapters]);
+            useEffect(() => { indexRef.current = currentIndex; }, [currentIndex]);
+
+            const textColor = getTextColor(backgroundColor);
+            const currentChapter = chapters[currentIndex];
+            const isMarkdown = currentChapter?.ext === 'md';
+            const isVertical = writingMode === 'vertical';
+
+            // ── ファイル読込 ───────────────────────────────────
+            const loadChapterFile = useCallback(async (chapter) => {
+                setIsLoading(true);
+                const text = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsText(chapter.file, 'UTF-8');
+                });
+                setTextContent(text);
+                setIsLoading(false);
+                // スクロール位置リセット
+                setTimeout(() => {
+                    if (!scrollRef.current) return;
+                    if (writingMode === 'vertical') {
+                        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+                    } else {
+                        scrollRef.current.scrollTop = 0;
+                    }
+                }, 0);
+            }, [writingMode]);
+
+            // 話切替時はスクロールリセット（writingMode変化時も）
+            useEffect(() => {
+                if (!scrollRef.current) return;
+                if (writingMode === 'vertical') {
+                    scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+                } else {
+                    scrollRef.current.scrollTop = 0;
+                }
+            }, [writingMode, currentIndex]);
+
+            // ── ファイル選択：単一フォルダ ────────────────────
+            const handleFolderSelect = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+                const textFiles = files
+                    .filter(f => /\.(txt|md)$/i.test(f.name))
+                    .sort((a, b) => naturalSort(a.name, b.name));
+                if (!textFiles.length) { alert('.txt または .md ファイルが見つかりませんでした。'); return; }
+                const newChapters = textFiles.map(f => ({
+                    name: f.name.replace(/\.(txt|md)$/i, ''),
+                    file: f,
+                    ext: f.name.split('.').pop().toLowerCase(),
+                }));
+                setChapters(newChapters);
+                setCurrentIndex(0);
+                setShowChapterList(false);
+                await loadChapterFile(newChapters[0]);
+            };
+
+            // ── ファイル選択：複数フォルダ ────────────────────
+            const handleMultiFolderSelect = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+
+                const folderMap = new Map();
+                files.forEach(file => {
+                    const parts = file.webkitRelativePath.split('/');
+                    if (parts.length < 2) return;
+                    const folder = parts[parts.length - 2];
+                    if (!/\.(txt|md)$/i.test(file.name)) return;
+                    if (!folderMap.has(folder)) folderMap.set(folder, []);
+                    folderMap.get(folder).push(file);
+                });
+
+                if (!folderMap.size) {
+                    // フォルダ構造がない場合はフラットに扱う
+                    const textFiles = files
+                        .filter(f => /\.(txt|md)$/i.test(f.name))
+                        .sort((a, b) => naturalSort(a.name, b.name));
+                    if (!textFiles.length) { alert('.txt または .md ファイルが見つかりませんでした。'); return; }
+                    const newChapters = textFiles.map(f => ({
+                        name: f.name.replace(/\.(txt|md)$/i, ''),
+                        file: f,
+                        ext: f.name.split('.').pop().toLowerCase(),
+                    }));
+                    setChapters(newChapters);
+                    setCurrentIndex(0);
+                    setShowChapterList(false);
+                    await loadChapterFile(newChapters[0]);
+                    return;
+                }
+
+                // フォルダごとに最初のファイルを代表として話リストに登録
+                const newChapters = [];
+                for (const [folderName, folderFiles] of folderMap.entries()) {
+                    const sorted = folderFiles.sort((a, b) => naturalSort(a.name, b.name));
+                    newChapters.push({
+                        name: folderName,
+                        file: sorted[0],
+                        ext: sorted[0].name.split('.').pop().toLowerCase(),
+                        allFiles: sorted,
+                    });
+                }
+                newChapters.sort((a, b) => naturalSort(a.name, b.name));
+                setChapters(newChapters);
+                setCurrentIndex(0);
+                setShowChapterList(false);
+                await loadChapterFile(newChapters[0]);
+            };
+
+            // ── 話移動 ────────────────────────────────────────
+            const goToChapter = useCallback(async (index) => {
+                const chs = chaptersRef.current;
+                if (index < 0 || index >= chs.length) return;
+                setCurrentIndex(index);
+                setShowChapterList(false);
+                setIsLoading(true);
+                const text = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsText(chs[index].file, 'UTF-8');
+                });
+                setTextContent(text);
+                setIsLoading(false);
+            }, []);
+
+            const goNext = useCallback(() => {
+                const next = indexRef.current + 1;
+                if (next < chaptersRef.current.length) goToChapter(next);
+            }, [goToChapter]);
+
+            const goPrev = useCallback(() => {
+                const prev = indexRef.current - 1;
+                if (prev >= 0) goToChapter(prev);
+            }, [goToChapter]);
+
+            // ── 自動スクロール ────────────────────────────────
+            useEffect(() => {
+                if (autoScroll && scrollRef.current) {
+                    autoScrollRef.current = setInterval(() => {
+                        const el = scrollRef.current;
+                        if (!el) return;
+                        const vert = writingMode === 'vertical';
+                        if (vert) {
+                            const atEnd = el.scrollLeft <= 50;
+                            if (atEnd && indexRef.current < chaptersRef.current.length - 1) {
+                                setTimeout(() => goNext(), 500);
+                            } else {
+                                el.scrollLeft -= scrollSpeed / 10;
+                            }
+                        } else {
+                            const atEnd = el.scrollHeight - el.scrollTop <= el.clientHeight + 50;
+                            if (atEnd && indexRef.current < chaptersRef.current.length - 1) {
+                                setTimeout(() => goNext(), 500);
+                            } else {
+                                el.scrollTop += scrollSpeed / 10;
+                            }
+                        }
+                    }, SCROLL_INTERVAL);
+                } else {
+                    clearInterval(autoScrollRef.current);
+                }4
+                return () => clearInterval(autoScrollRef.current);
+            }, [autoScroll, scrollSpeed, writingMode, goNext]);
+
+            // ── キーボード ────────────────────────────────────
+            useEffect(() => {
+                const handler = (e) => {
+                    const tag = e.target.tagName;
+                    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                    switch (e.key) {
+                        case ' ': e.preventDefault(); setAutoScroll(p => !p); break;
+                        case '+': case '=': setFontSize(p => Math.min(p + 1, FONT_MAX)); break;
+                        case '-': case '_': setFontSize(p => Math.max(p - 1, FONT_MIN)); break;
+                        case '0': setFontSize(FONT_DEFAULT); break;
+                        case 'v': case 'V':
+                            setWritingMode(p => p === 'horizontal' ? 'vertical' : 'horizontal');
+                            break;
+                        case 'ArrowRight':
+                            if (writingMode === 'horizontal') goNext(); else goPrev();
+                            break;
+                        case 'ArrowLeft':
+                            if (writingMode === 'horizontal') goPrev(); else goNext();
+                            break;
+                    }
+                };
+                window.addEventListener('keydown', handler);
+                return () => window.removeEventListener('keydown', handler);
+            }, [writingMode, goNext, goPrev]);
+
+            // ── レンダリング ──────────────────────────────────
+            const contentStyle = {
+                fontFamily: FONTS[fontFamily],
+                fontSize: `${fontSize}px`,
+                color: textColor,
+                lineHeight: 1.9,
+            };
+
+            return (
+                <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
+                    {/* ── サイドバー ── */}
+                    <div className="w-64 bg-gray-800 p-4 flex flex-col gap-3 border-r border-gray-700 overflow-y-auto flex-shrink-0">
+                        {/* タイトル */}
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            <h1 className="text-base font-bold">テキストビューア</h1>
+                        </div>
+
+                        {/* ファイル選択 */}
+                        <div className="space-y-2">
+                            <label className="block">
+                                <span className="text-xs text-gray-400 block mb-1">📁 単一フォルダ</span>
+                                <input type="file" webkitdirectory="" directory="" multiple
+                                    onChange={handleFolderSelect}
+                                    className="block w-full text-xs text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer file:text-xs" />
+                            </label>
+                            <label className="block">
+                                <span className="text-xs text-gray-400 block mb-1">📚 複数フォルダ（親フォルダ選択）</span>
+                                <input type="file" webkitdirectory="" directory="" multiple
+                                    onChange={handleMultiFolderSelect}
+                                    className="block w-full text-xs text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-green-600 file:text-white hover:file:bg-green-700 file:cursor-pointer file:text-xs" />
+                            </label>
+                        </div>
+
+                        {/* 話リスト */}
+                        {chapters.length > 0 && (
+                            <div className="space-y-2 pb-2 border-b border-gray-700">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-semibold text-gray-400">現在の話</h3>
+                                    <button onClick={() => setShowChapterList(p => !p)}
+                                        className="text-xs text-blue-400 hover:text-blue-300">
+                                        {showChapterList ? '閉じる' : '一覧'}
+                                    </button>
+                                </div>
+                                <div className="bg-gray-700 p-2 rounded">
+                                    <p className="text-xs font-medium truncate" title={currentChapter?.name}>
+                                        {currentChapter?.name}
+                                        {isMarkdown && <span className="ml-1 text-xs bg-purple-700 text-purple-200 px-1 rounded">MD</span>}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-0.5">
+                                        {currentIndex + 1} / {chapters.length}
+                                    </p>
+                                </div>
+                                {showChapterList && (
+                                    <div className="max-h-48 overflow-y-auto bg-gray-700 rounded p-1.5 space-y-1">
+                                        {chapters.map((ch, i) => (
+                                            <button key={i} onClick={() => goToChapter(i)}
+                                                className={`w-full text-left px-2 py-1.5 rounded text-xs ${
+                                                    i === currentIndex
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'hover:bg-gray-600 text-gray-300'
+                                                }`}>
+                                                <div className="truncate" title={ch.name}>{ch.name}</div>
+                                                {ch.ext === 'md' && <span className="text-purple-300 text-xs">.md</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex gap-2">
+                                    <button onClick={goPrev} disabled={currentIndex === 0}
+                                        className={`flex-1 py-1.5 rounded text-xs flex items-center justify-center gap-1 ${
+                                            currentIndex === 0 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                        前
+                                    </button>
+                                    <button onClick={goNext} disabled={currentIndex === chapters.length - 1}
+                                        className={`flex-1 py-1.5 rounded text-xs flex items-center justify-center gap-1 ${
+                                            currentIndex === chapters.length - 1 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                        次
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 文字サイズ */}
+                        <div className="space-y-1">
+                            <h3 className="text-xs font-semibold text-gray-400">文字サイズ（{fontSize}px）</h3>
+                            <div className="flex gap-1 items-center">
+                                <button onClick={() => setFontSize(p => Math.max(p-1, FONT_MIN))}
+                                    className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center justify-center">−</button>
+                                <input type="range" min={FONT_MIN} max={FONT_MAX} value={fontSize}
+                                    onChange={e => setFontSize(Number(e.target.value))}
+                                    className="flex-1" />
+                                <button onClick={() => setFontSize(p => Math.min(p+1, FONT_MAX))}
+                                    className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center justify-center">＋</button>
+                            </div>
+                        </div>
+
+                        {/* フォント */}
+                        <div className="space-y-1">
+                            <h3 className="text-xs font-semibold text-gray-400">フォント</h3>
+                            <div className="flex gap-1">
+                                {[['mincho','明朝'],['gothic','ゴシック']].map(([k,label]) => (
+                                    <button key={k} onClick={() => setFontFamily(k)}
+                                        className={`flex-1 py-1 rounded text-xs ${fontFamily === k ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 表示方向 */}
+                        <div className="space-y-1">
+                            <h3 className="text-xs font-semibold text-gray-400">表示方向</h3>
+                            <div className="flex gap-1">
+                                {[['horizontal','横書き'],['vertical','縦書き']].map(([k,label]) => (
+                                    <button key={k} onClick={() => setWritingMode(k)}
+                                        className={`flex-1 py-1 rounded text-xs ${writingMode === k ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                            {isVertical && isMarkdown && (
+                                <p className="text-xs text-yellow-400 mt-1">※ テーブルは横書き推奨</p>
+                            )}
+                        </div>
+
+                        {/* 背景色 */}
+                        <div className="space-y-1">
+                            <h3 className="text-xs font-semibold text-gray-400">背景色</h3>
+                            <div className="grid grid-cols-6 gap-1">
+                                {BG_COLORS.map(color => (
+                                    <button key={color} onClick={() => setBackgroundColor(color)}
+                                        className={`h-7 rounded border-2 ${backgroundColor === color ? 'border-blue-400' : 'border-gray-600'}`}
+                                        style={{ backgroundColor: color }} title={color} />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 自動スクロール */}
+                        <div className="space-y-1">
+                            <h3 className="text-xs font-semibold text-gray-400">自動スクロール</h3>
+                            <button onClick={() => setAutoScroll(p => !p)}
+                                className={`w-full py-1.5 rounded text-xs font-medium ${autoScroll ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                {autoScroll ? '■ 停止' : '▶ 開始'} (スペースキー)
+                            </button>
+                            {autoScroll && (
+                                <div>
+                                    <label className="text-xs text-gray-400">速度: {scrollSpeed}</label>
+                                    <input type="range" min="10" max="100" value={scrollSpeed}
+                                        onChange={e => setScrollSpeed(Number(e.target.value))}
+                                        className="w-full mt-1" />
+                                    <p className="text-xs text-gray-500 mt-1">※ 末尾で次の話へ自動移動</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ショートカット */}
+                        <div className="text-xs text-gray-500 space-y-0.5 mt-auto pt-2 border-t border-gray-700">
+                            <p className="font-semibold text-gray-400 mb-1">ショートカット</p>
+                            <p>スペース: 自動スクロール</p>
+                            <p>← →: 話の移動</p>
+                            <p>+ / −: 文字サイズ</p>
+                            <p>0: サイズリセット</p>
+                            <p>V: 縦書き / 横書き切替</p>
+                        </div>
+                    </div>
+
+                    {/* ── メインコンテンツ ── */}
+                    <div className="flex flex-col flex-1 overflow-hidden">
+                        {/* 本文エリア */}
+                        {isVertical ? (
+                            /* 縦書きモード */
+                            <div ref={scrollRef} className="vertical-container flex-1"
+                                style={{ backgroundColor }}>
+                                {isLoading ? (
+                                    <div className="flex items-center justify-center w-full">
+                                        <div className="text-center" style={{ writingMode: 'horizontal-tb' }}>
+                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                                            <p className="text-gray-400 text-sm">読み込み中...</p>
+                                        </div>
+                                    </div>
+                                ) : textContent ? (
+                                    <div style={{ ...contentStyle, padding: '1.5rem 2rem', height: '100%' }}>
+                                        {isMarkdown
+                                            ? <div className="md-content"
+                                                dangerouslySetInnerHTML={{ __html: marked.parse(textContent) }} />
+                                            : <div style={{ whiteSpace: 'pre-wrap' }}>{textContent}</div>
+                                        }
+                                    </div>
+                                ) : (
+                                    <EmptyState />
+                                )}
+                            </div>
+                        ) : (
+                            /* 横書きモード */
+                            <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden"
+                                style={{ backgroundColor }}>
+                                {isLoading ? (
+                                    <div className="flex items-center justify-center h-full">
+                                        <div className="text-center">
+                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                                            <p className="text-gray-400 text-sm">読み込み中...</p>
+                                        </div>
+                                    </div>
+                                ) : textContent ? (
+                                    <div style={{ ...contentStyle, maxWidth: '800px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                                        {isMarkdown
+                                            ? <div className="md-content"
+                                                dangerouslySetInnerHTML={{ __html: marked.parse(textContent) }} />
+                                            : <div style={{ whiteSpace: 'pre-wrap' }}>{textContent}</div>
+                                        }
+                                        {/* 末尾ナビ */}
+                                        {currentIndex < chapters.length - 1 && (
+                                            <div className="mt-10 mb-6 text-center">
+                                                <button onClick={goNext}
+                                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium flex items-center gap-2 mx-auto text-white">
+                                                    次の話へ
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <EmptyState />
+                                )}
+                            </div>
+                        )}
+
+                        {/* フッター */}
+                        {chapters.length > 0 && (
+                            <div className="h-11 bg-gray-900 border-t border-gray-700 flex items-center justify-between px-4 flex-shrink-0">
+                                <button onClick={goPrev} disabled={currentIndex === 0}
+                                    className={`px-4 py-1 rounded text-sm flex items-center gap-1 ${
+                                        currentIndex === 0 ? 'text-gray-600 cursor-not-allowed' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}>
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    前の話
+                                </button>
+                                <div className="text-sm text-gray-400">
+                                    <span className="text-white font-medium">{currentIndex + 1}</span>
+                                    <span className="mx-1">/</span>
+                                    <span>{chapters.length}</span>
+                                    <span className="ml-2 text-xs truncate max-w-xs hidden sm:inline" title={currentChapter?.name}>
+                                        {currentChapter?.name}
+                                    </span>
+                                </div>
+                                <button onClick={goNext} disabled={currentIndex === chapters.length - 1}
+                                    className={`px-4 py-1 rounded text-sm flex items-center gap-1 ${
+                                        currentIndex === chapters.length - 1 ? 'text-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                                    次の話
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function EmptyState() {
+            return (
+                <div className="flex items-center justify-center h-full w-full">
+                    <div className="text-center text-gray-500">
+                        <svg className="w-14 h-14 mx-auto mb-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-base mb-2">テキストファイルを読み込んでください</p>
+                        <p className="text-sm">.txt / .md ファイルに対応</p>
+                        <p className="text-xs mt-2 opacity-60">複数の話を読むには「複数フォルダ」を選択</p>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<TextViewer />, document.getElementById('root'));
+    </script>
+</body>
+</html>

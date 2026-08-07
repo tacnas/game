@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Reversal Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #00FF00;
+            font-family: 'Courier New', monospace;
+        }
+        #gameContainer {
+            position: relative;
+        }
+        canvas {
+            border: 2px solid #fff;
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px #000;
+            pointer-events: none;
+        }
+        #ui div {
+            float: left;
+            margin-right: 20px;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            text-align: center;
+            display: none;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border: 3px solid #fff;
+        }
+        #gameOver h1 {
+            margin: 0 0 20px 0;
+            font-size: 48px;
+        }
+        #gameOver p {
+            margin: 10px 0;
+            font-size: 24px;
+        }
+        #gameOver button {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+        #gameOver button:hover {
+            background: #ccc;
+        }
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            text-align: center;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px #000;
+        }
+        .demo-container {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+        .demo-box {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 30px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+        }
+        .demo-visual {
+            width: 200px;
+            height: 150px;
+            position: relative;
+            border: 2px solid #fff;
+            background: #000;
+        }
+        .demo-player {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+        }
+        .demo-arrow {
+            font-size: 40px;
+            color: #fff;
+        }
+        .key-visual {
+            display: inline-block;
+            padding: 10px 20px;
+            border: 3px solid #fff;
+            border-radius: 5px;
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+    <style>
+        @keyframes fall {
+            0% { top: 30%; }
+            50% { top: 70%; }
+            100% { top: 30%; }
+        }
+        @keyframes wave {
+            0% { top: 30%; }
+            25% { top: 50%; }
+            50% { top: 30%; }
+            75% { top: 50%; }
+            100% { top: 30%; }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+
+</head>
+<body>
+    <div id="gameContainer">
+
+        <canvas id="gameCanvas" width="1200" height="640"></canvas>
+
+        <div id="ui">
+            <div>Level: <span id="difficulty">1</span></div>
+            <div>Score: <span id="score">0</span></div>
+            <div>(High Score: <span id="highScore">0</span>)</div>
+        </div>
+
+        <div id="instructions">
+            <h2 style="font-size: 32px; margin-bottom: 20px;">Gravity Reversal Game</h2>
+            
+            <div class="demo-container">
+                <div class="demo-box">
+                    <div class="demo-visual">
+                        <div class="demo-player" style="left: 50%; top: 30%; animation: fall 1.5s ease-in infinite;"></div>
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: #fff;"></div>
+                        <div style="position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #fff;"></div>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 16px;">⚠️Game Is Over If You Crash Into The Wall.</div>
+                </div>
+                
+                <div style="font-size: 60px;">→</div>
+                
+                <div class="demo-box">
+                    <div class="key-visual">SPACE</div>
+                    <div style="margin: 15px 0; font-size: 24px;">↕️</div>
+                    <div style="font-size: 16px;">Space Key<br/>Invert Gravity!</div>
+                </div>
+                
+                <div style="font-size: 60px;">→</div>
+                
+                <div class="demo-box">
+                    <div class="demo-visual">
+                        <div class="demo-player" style="left: 30%; top: 50%; animation: wave 2s ease-in-out infinite;"></div>
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: #fff;"></div>
+                        <div style="position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #fff;"></div>
+                        <div style="position: absolute; right: 20px; top: 0; width: 30px; height: 60px; background: #fff;"></div>
+                        <div style="position: absolute; right: 20px; bottom: 0; width: 30px; height: 60px; background: #fff;"></div>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 16px;">✨Avoid The Walls And Survive!</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; font-size: 24px; animation: pulse 2s ease-in-out infinite;">
+                Press Space Key To Start
+            </div>
+        </div>
+
+        <div id="gameOver">
+            <h1>GAME OVER</h1>
+            <p>Score: <span id="finalScore">0</span></p>
+            <p>High Score: <span id="finalHighScore">0</span></p>
+            <p>Reach Level: <span id="finalDifficulty">1</span></p>
+            <button onclick="continueGame()" style="background: #4CAF50;">Continue (Space Key)</button>
+            <button onclick="restartGame()" style="background: #fff; margin-left: 10px;">Reset (R Key)</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // ゲーム設定
+        const GRAVITY = 0.08;
+        const PLAYER_SIZE = 8;
+        const SCROLL_SPEED = 3;
+        const WALL_WIDTH = 40;
+        const INITIAL_GAP = 250;
+        const MIN_GAP = 120;
+        const GAP_DECREASE_RATE = 2; // スコアごとにこの値だけ隙間が狭くなる
+        const TRAIL_INTERVAL = 10; // 軌跡を残す間隔（フレーム数）
+        
+        // ゲーム状態
+        let gameState = 'waiting'; // waiting, playing, gameOver
+        let player = {
+            x: 200,
+            y: canvas.height / 2,
+            velocity: 0,
+            size: PLAYER_SIZE
+        };
+        let walls = [];
+        let score = 0;
+        let highScore = localStorage.getItem('gravityGameHighScore') ? parseInt(localStorage.getItem('gravityGameHighScore')) : 0;
+        let scrollDistance = 0;
+        let wallsPassed = 0;
+        let spacePressed = false;
+        let isExplosion = false;
+        let explosionParticles = [];
+        let playerTrail = []; // 移動軌跡
+        let trailCounter = 0; // 軌跡を残すためのカウンター
+        let currentDifficulty = 1; // 現在の難易度を保存
+        
+        // 難易度計算（保存された難易度を考慮）
+        function getDifficulty() {
+            const scoreDifficulty = Math.floor(score / 100) + 1;
+            return Math.max(currentDifficulty, scoreDifficulty);
+        }
+        
+        function getCurrentGap() {
+            const difficulty = getDifficulty();
+            const gap = INITIAL_GAP - (difficulty - 1) * GAP_DECREASE_RATE;
+            return Math.max(gap, MIN_GAP);
+        }
+        
+        // 壁の生成
+        function createWall() {
+            const type = Math.random() < 0.5 ? 'pair' : 'center';
+            const gap = getCurrentGap();
+            
+            if (type === 'pair') {
+                // 上下ペアの壁
+                const gapY = Math.random() * (canvas.height - gap - 100) + 50;
+                return {
+                    type: 'pair',
+                    x: canvas.width,
+                    topHeight: gapY,
+                    bottomY: gapY + gap,
+                    bottomHeight: canvas.height - (gapY + gap),
+                    passed: false
+                };
+            } else {
+                // 中央の壁
+                const wallHeight = Math.random() * 150 + 100;
+                const wallY = Math.random() * (canvas.height - wallHeight - 100) + 50;
+                return {
+                    type: 'center',
+                    x: canvas.width,
+                    y: wallY,
+                    height: wallHeight,
+                    passed: false
+                };
+            }
+        }
+        
+        // 爆発パーティクル生成（スローモーション爆散エフェクト）
+        function createExplosion(x, y) {
+            // 自機の破片（四方八方にゆっくり散る）
+            for (let i = 0; i < 80; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 0.4 + 0.1; // 非常にゆっくり
+                const distance = Math.random() * 20; // 初期距離のばらつき
+                
+                explosionParticles.push({
+                    x: x + Math.cos(angle) * distance,
+                    y: y + Math.sin(angle) * distance,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 1.0,
+                    delay: Math.random() * 0.1,
+                    size: Math.random() * 3 + 1,
+                    rotation: Math.random() * Math.PI * 2,
+                    rotationSpeed: (Math.random() - 0.5) * 0.02,
+                    type: 'fragment'
+                });
+            }
+            
+            // 中心の閃光（ゆっくり拡大）
+            explosionParticles.push({
+                x: x,
+                y: y,
+                vx: 0,
+                vy: 0,
+                life: 1.0,
+                delay: 0,
+                size: 15,
+                maxSize: 80,
+                type: 'flash',
+                growing: true
+            });
+            
+            // 衝撃波（非常にゆっくり拡大）
+            for (let i = 0; i < 5; i++) {
+                explosionParticles.push({
+                    x: x,
+                    y: y,
+                    radius: i * 10,
+                    maxRadius: 200,
+                    life: 1.0,
+                    delay: i * 0.2,
+                    type: 'shockwave',
+                    speed: 0.8
+                });
+            }
+            
+            // 光の粒子（内側からゆっくり放射）
+            for (let i = 0; i < 40; i++) {
+                const angle = (Math.PI * 2 * i) / 40;
+                const speed = 0.2 + Math.random() * 0.15;
+                
+                explosionParticles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 1.0,
+                    delay: Math.random() * 0.3,
+                    size: Math.random() * 2 + 2,
+                    type: 'glow'
+                });
+            }
+        }
+        
+        // 衝突判定
+        function checkCollision() {
+            // 天井と床
+            if (player.y - player.size <= 0 || player.y + player.size >= canvas.height) {
+                return true;
+            }
+            
+            // 壁との衝突
+            for (let wall of walls) {
+                if (wall.x < player.x + player.size && 
+                    wall.x + WALL_WIDTH > player.x - player.size) {
+                    
+                    if (wall.type === 'pair') {
+                        if (player.y - player.size < wall.topHeight || 
+                            player.y + player.size > wall.bottomY) {
+                            return true;
+                        }
+                    } else if (wall.type === 'center') {
+                        if (player.y - player.size < wall.y + wall.height && 
+                            player.y + player.size > wall.y) {
+                            return true;
+                        }
+                    }
+                }
+                
+                // 壁を通過したらスコア加算
+                if (!wall.passed && wall.x + WALL_WIDTH < player.x) {
+                    wall.passed = true;
+                    wallsPassed++;
+                }
+            }
+            
+            return false;
+        }
+        
+        // ゲーム更新
+        function update() {
+            if (gameState !== 'playing' && gameState !== 'gameOver') return;
+            
+            // ゲームオーバー時は爆発エフェクトのみ更新
+            if (gameState === 'gameOver') {
+                updateExplosion();
+                return;
+            }
+            
+            // プレイヤーの移動
+            if (spacePressed) {
+                player.velocity -= GRAVITY; // 上向きの加速
+            } else {
+                player.velocity += GRAVITY; // 下向きの加速
+            }
+            
+            player.y += player.velocity;
+            
+            // 一定間隔で移動軌跡に現在位置を追加
+            trailCounter++;
+            if (trailCounter >= TRAIL_INTERVAL) {
+                playerTrail.push({ x: player.x, y: player.y });
+                trailCounter = 0;
+            }
+            
+            // 既存の軌跡をスクロールに応じて移動
+            for (let i = playerTrail.length - 1; i >= 0; i--) {
+                playerTrail[i].x -= SCROLL_SPEED;
+                
+                // 画面左端を超えた軌跡を削除
+                if (playerTrail[i].x < -PLAYER_SIZE) {
+                    playerTrail.splice(i, 1);
+                }
+            }
+            
+            // スクロール距離の更新
+            scrollDistance += SCROLL_SPEED;
+            
+            // 壁の移動
+            for (let i = walls.length - 1; i >= 0; i--) {
+                walls[i].x -= SCROLL_SPEED;
+                
+                // 画面外の壁を削除
+                if (walls[i].x + WALL_WIDTH < 0) {
+                    walls.splice(i, 1);
+                }
+            }
+            
+            // 新しい壁の生成
+            if (walls.length === 0 || walls[walls.length - 1].x < canvas.width - (400 - (getDifficulty() * 10))) {
+                walls.push(createWall());
+            }
+            
+            // スコア計算（整数のみ）
+            const difficulty = getDifficulty();
+            const scrollScore = Math.floor(scrollDistance / 10); // スクロール10pxごとに1点
+            const wallBonus = wallsPassed * 5; // 壁通過で5点
+            const difficultyBonus = Math.floor(scrollScore * (difficulty - 1) * 0.1); // 難易度ボーナス
+            //score = scrollScore + wallBonus + difficultyBonus;
+            score = scrollScore + wallBonus;
+            
+            // 衝突判定
+            if (checkCollision()) {
+                gameOver();
+                return; // ゲームオーバー後は処理を中断
+            }
+            
+            updateExplosion();
+        }
+        
+        // 爆発エフェクトの更新（独立関数）
+        function updateExplosion() {
+            for (let i = explosionParticles.length - 1; i >= 0; i--) {
+                const p = explosionParticles[i];
+                
+                // 遅延がある場合はスキップ
+                if (p.delay > 0) {
+                    p.delay -= 0.016;
+                    continue;
+                }
+                
+                if (p.type === 'shockwave') {
+                    // 衝撃波の拡大（非常にゆっくり）
+                    p.radius += p.speed;
+                    p.life -= 0.003;
+                } else if (p.type === 'flash') {
+                    // 中心の閃光が成長してから消える
+                    if (p.growing) {
+                        p.size += 0.8;
+                        if (p.size >= p.maxSize) {
+                            p.growing = false;
+                        }
+                    } else {
+                        p.life -= 0.004;
+                    }
+                } else if (p.type === 'fragment') {
+                    // 破片がゆっくり散る + 重力の影響
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.005; // わずかに重力
+                    p.rotation += p.rotationSpeed;
+                    p.life -= 0.003;
+                } else if (p.type === 'glow') {
+                    // 光の粒子がゆっくり広がる
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.99; // わずかに減速
+                    p.vy *= 0.99;
+                    p.life -= 0.004;
+                }
+                
+                if (p.life <= 0) {
+                    explosionParticles.splice(i, 1);
+                }
+            }
+        }
+        
+        // 描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 天井と床
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(canvas.width, 0);
+            ctx.moveTo(0, canvas.height);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.stroke();
+            
+            if (gameState === 'playing' || gameState === 'gameOver') {
+                // 壁の描画
+                ctx.fillStyle = '#fff';
+                for (let wall of walls) {
+                    if (wall.type === 'pair') {
+                        // 上の壁
+                        ctx.fillRect(wall.x, 0, WALL_WIDTH, wall.topHeight);
+                        // 下の壁
+                        ctx.fillRect(wall.x, wall.bottomY, WALL_WIDTH, wall.bottomHeight);
+                    } else if (wall.type === 'center') {
+                        // 中央の壁
+                        ctx.fillRect(wall.x, wall.y, WALL_WIDTH, wall.height);
+                    }
+                }
+            }
+
+            if (gameState === 'playing') {
+                // 移動軌跡の描画（透明度を上げて視覚的に区別）
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                for (let i = 0; i < playerTrail.length; i++) {
+                    ctx.beginPath();
+                    ctx.arc(playerTrail[i].x, playerTrail[i].y, PLAYER_SIZE, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // プレイヤーの描画
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // UI更新
+                document.getElementById('score').textContent = score;
+                document.getElementById('highScore').textContent = highScore;
+                document.getElementById('difficulty').textContent = getDifficulty();
+            }
+
+            // 爆発エフェクト（スローモーション爆散）
+            if (gameState === 'gameOver' || explosionParticles.length > 0) {
+                for (let p of explosionParticles) {
+                    if (p.delay > 0) continue; // 遅延中はスキップ
+                
+                    if (p.type === 'shockwave') {
+                    // 衝撃波（拡大する円）
+                    const alpha = p.life * 0.5;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // 内側の薄い円
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.2})`;
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    } else if (p.type === 'flash') {
+                    // 中心の閃光
+                    const alpha = p.life * 0.8;
+                    
+                    // 外側のグロー
+                    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+                    gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+                    gradient.addColorStop(0.4, `rgba(255, 255, 255, ${alpha * 0.6})`);
+                    gradient.addColorStop(0.7, `rgba(255, 255, 255, ${alpha * 0.3})`);
+                    gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    } else if (p.type === 'fragment') {
+                    // 破片（回転しながら散る）
+                    const alpha = p.life;
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    
+                    // 小さな四角形の破片
+                    ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+                    
+                    // 破片の軌跡（微かな尾）
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.3})`;
+                    ctx.fillRect(-p.size/2 - p.vx * 3, -p.size/2 - p.vy * 3, p.size * 0.7, p.size * 0.7);
+                    
+                    ctx.restore();
+                    } else if (p.type === 'glow') {
+                    // 光の粒子
+                    const alpha = p.life * 0.9;
+                    
+                    // グロー効果
+                    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
+                    gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+                    gradient.addColorStop(0.5, `rgba(255, 255, 255, ${alpha * 0.5})`);
+                    gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 中心の明るい点
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    }
+                }
+            }
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+            isExplosion = true;
+            createExplosion(player.x, player.y);
+            
+            // 現在の難易度を保存
+            currentDifficulty = getDifficulty();
+            
+            // ハイスコア更新
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('gravityGameHighScore', highScore);
+            }
+            
+            // 爆発アニメーション後にゲームオーバー画面を表示
+            setTimeout(() => {
+                document.getElementById('finalScore').textContent = score;
+                document.getElementById('finalHighScore').textContent = highScore;
+                document.getElementById('finalDifficulty').textContent = currentDifficulty;
+                document.getElementById('gameOver').style.display = 'block';
+                isExplosion = false;
+            }, 2000); // 2秒後に表示
+        }
+        
+        // ゲーム開始
+        function startGame() {
+            gameState = 'playing';
+            player.y = canvas.height / 2;
+            player.velocity = 0;
+            walls = [];
+            //score = 0;
+            scrollDistance = 0;
+            wallsPassed = 0;
+            explosionParticles = [];
+            playerTrail = [];
+            trailCounter = 0;
+            
+            // ハイスコア表示を更新
+            document.getElementById('highScore').textContent = highScore;
+            
+            document.getElementById('instructions').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+            
+            // 初期の壁を生成
+            walls.push(createWall());
+        }
+        
+        // 続きから開始
+        function continueGame() {
+            gameState = 'playing';
+            player.y = canvas.height / 2;
+            player.velocity = 0;
+            walls = [];
+            //score = 0; // スコアはリセット
+            scrollDistance = 0;
+            wallsPassed = 0;
+            explosionParticles = [];
+            playerTrail = [];
+            trailCounter = 0;
+            // currentDifficultyは引き継ぐ
+            
+            // ハイスコア表示を更新
+            document.getElementById('highScore').textContent = highScore;
+            
+            document.getElementById('instructions').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+            
+            // 初期の壁を生成
+            walls.push(createWall());
+        }
+        
+        // 最初から開始
+        function restartGame() {
+            currentDifficulty = 1; // 難易度もリセット
+            continueGame();
+        }
+        
+        // キーボード入力
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                
+                if (gameState === 'waiting') {
+                    startGame();
+                } else if (gameState === 'gameOver') {
+                    if (isExplosion) return;
+                    continueGame(); // デフォルトは続きから
+                } else if (gameState === 'playing') {
+                    spacePressed = true;
+                }
+            }
+            
+            if (e.code === 'KeyR' && gameState === 'gameOver') {
+                restartGame(); // Rキーで最初から
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                spacePressed = false;
+            }
+        });
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        gameLoop();
+    </script>
+
+</body>
+</html>

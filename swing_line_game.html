@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swing Line - スイングライン</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #0a0a0a;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+        }
+        canvas {
+            border: 3px solid #00ffff;
+            box-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffff;
+            font-size: 20px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        #timer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #00ffff;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        #combo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff00ff;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px #ff00ff;
+            display: none;
+            animation: comboAnim 0.5s ease-out;
+        }
+        @keyframes comboAnim {
+            0% { transform: translate(-50%, -50%) scale(0); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ffff;
+            text-align: center;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        #message h1 {
+            font-size: 48px;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 20px #00ffff;
+        }
+        .key-hint {
+            display: inline-block;
+            padding: 10px 20px;
+            border: 2px solid #00ffff;
+            margin: 10px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 10px #00ffff; }
+            50% { box-shadow: 0 0 20px #00ffff; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <div>ステージ: <span id="stage">1</span></div>
+            <div>スコア: <span id="score">0</span></div>
+            <div>コンボ: <span id="comboCount">0</span>x</div>
+        </div>
+        <div id="timer">60.00</div>
+        <div id="combo"></div>
+        <div id="message">
+            <h1>SWING LINE</h1>
+            <p>スペースキーで支点を切り替えながらゴールを目指せ！</p>
+            <p>障害物スレスレを通過するとコンボボーナス</p>
+            <div class="key-hint">SPACE</div>
+            <p style="margin-top: 20px;">スペースキーを押してスタート</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // ゲーム設定
+        const LINE_LENGTH = 60;
+        const ROTATION_SPEED = 0.02;
+        const CLOSE_DISTANCE = 15; // スレスレ判定の距離
+        
+        // ゲーム状態
+        let gameState = 'waiting'; // waiting, playing, clear, gameOver
+        let currentStage = 1;
+        let score = 0;
+        let timeLeft = 60;
+        let combo = 0;
+        let perfectClear = true;
+        
+        // プレイヤー（線）
+        let player = {
+            pivotX: 100,
+            pivotY: 300,
+            angle: 0,
+            pivotEnd: 'start', // 'start' or 'end'
+            length: LINE_LENGTH
+        };
+        
+        // 障害物
+        let obstacles = [];
+        let goal = null;
+        
+        // ステージデータ
+        const stages = [
+            // ステージ1: チュートリアル
+            {
+                obstacles: [
+                    { x: 200, y: 200, width: 40, height: 200 },
+                    { x: 400, y: 200, width: 40, height: 150 },
+                    { x: 600, y: 250, width: 40, height: 200 }
+                ],
+                goal: { x: 750, y: 300, radius: 30 },
+                timeLimit: 60
+            },
+            // ステージ2: 狭い通路
+            {
+                obstacles: [
+                    { x: 200, y: 100, width: 40, height: 180 },
+                    { x: 200, y: 320, width: 40, height: 180 },
+                    { x: 400, y: 150, width: 40, height: 180 },
+                    { x: 400, y: 370, width: 40, height: 180 },
+                    { x: 600, y: 100, width: 40, height: 200 },
+                    { x: 600, y: 340, width: 40, height: 200 }
+                ],
+                goal: { x: 750, y: 300, radius: 30 },
+                timeLimit: 50
+            },
+            // ステージ3: ジグザグ
+            {
+                obstacles: [
+                    { x: 150, y: 100, width: 40, height: 200 },
+                    { x: 300, y: 300, width: 40, height: 200 },
+                    { x: 450, y: 100, width: 40, height: 200 },
+                    { x: 600, y: 300, width: 40, height: 200 }
+                ],
+                goal: { x: 750, y: 200, radius: 30 },
+                timeLimit: 45
+            }
+        ];
+        
+        // 線の端点を取得
+        function getLinePoints() {
+            const endX = player.pivotX + Math.cos(player.angle) * player.length;
+            const endY = player.pivotY + Math.sin(player.angle) * player.length;
+            
+            if (player.pivotEnd === 'start') {
+                return {
+                    startX: player.pivotX,
+                    startY: player.pivotY,
+                    endX: endX,
+                    endY: endY
+                };
+            } else {
+                return {
+                    startX: endX,
+                    startY: endY,
+                    endX: player.pivotX,
+                    endY: player.pivotY
+                };
+            }
+        }
+        
+        // 線と矩形の衝突判定
+        function lineRectCollision(x1, y1, x2, y2, rect) {
+            // 線分と矩形の各辺の交差判定
+            const left = rect.x;
+            const right = rect.x + rect.width;
+            const top = rect.y;
+            const bottom = rect.y + rect.height;
+            
+            // 線分と矩形の辺の交差チェック
+            return lineLineCollision(x1, y1, x2, y2, left, top, right, top) ||
+                   lineLineCollision(x1, y1, x2, y2, right, top, right, bottom) ||
+                   lineLineCollision(x1, y1, x2, y2, right, bottom, left, bottom) ||
+                   lineLineCollision(x1, y1, x2, y2, left, bottom, left, top) ||
+                   // 線分の端点が矩形内にあるかチェック
+                   (x1 > left && x1 < right && y1 > top && y1 < bottom) ||
+                   (x2 > left && x2 < right && y2 > top && y2 < bottom);
+        }
+        
+        // 線分同士の交差判定
+        function lineLineCollision(x1, y1, x2, y2, x3, y3, x4, y4) {
+            const denominator = ((x2 - x1) * (y4 - y3)) - ((y2 - y1) * (x4 - x3));
+            if (denominator === 0) return false;
+            
+            const ua = (((x4 - x3) * (y1 - y3)) - ((y4 - y3) * (x1 - x3))) / denominator;
+            const ub = (((x2 - x1) * (y1 - y3)) - ((y2 - y1) * (x1 - x3))) / denominator;
+            
+            return (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1);
+        }
+        
+        // 点と矩形の最短距離
+        function pointRectDistance(px, py, rect) {
+            const dx = Math.max(rect.x - px, 0, px - (rect.x + rect.width));
+            const dy = Math.max(rect.y - py, 0, py - (rect.y + rect.height));
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+        
+        // 支点切り替え
+        function togglePivot() {
+            if (gameState !== 'playing') return;
+            
+            const points = getLinePoints();
+            if (player.pivotEnd === 'start') {
+                player.pivotX = points.endX;
+                player.pivotY = points.endY;
+                player.pivotEnd = 'end';
+            } else {
+                player.pivotX = points.startX;
+                player.pivotY = points.startY;
+                player.pivotEnd = 'start';
+            }
+            player.angle += Math.PI; // 角度を反転
+        }
+        
+        // ステージ読み込み
+        function loadStage(stageNum) {
+            if (stageNum > stages.length) {
+                // 全クリア
+                gameState = 'allClear';
+                showMessage('ALL CLEAR!', `最終スコア: ${score}`);
+                return;
+            }
+            
+            const stage = stages[stageNum - 1];
+            obstacles = stage.obstacles;
+            goal = stage.goal;
+            timeLeft = stage.timeLimit;
+            
+            // プレイヤーをリセット
+            player.pivotX = 100;
+            player.pivotY = 300;
+            player.angle = 0;
+            player.pivotEnd = 'start';
+            
+            combo = 0;
+            perfectClear = true;
+        }
+        
+        // メッセージ表示
+        function showMessage(title, subtitle) {
+            const msg = document.getElementById('message');
+            msg.innerHTML = `<h1>${title}</h1><p>${subtitle}</p><p style="margin-top: 20px;">スペースキーで続ける</p>`;
+            msg.style.display = 'block';
+        }
+        
+        // ゲーム更新
+        function update(deltaTime) {
+            if (gameState !== 'playing') return;
+            
+            // 回転
+            player.angle += ROTATION_SPEED;
+            
+            // タイマー更新
+            timeLeft -= deltaTime;
+            if (timeLeft <= 0) {
+                timeLeft = 0;
+                gameOver();
+                return;
+            }
+            
+            // 衝突判定
+            const points = getLinePoints();
+            
+            // ステージ境界との衝突
+            if (points.startX < 0 || points.startX > canvas.width ||
+                points.startY < 0 || points.startY > canvas.height ||
+                points.endX < 0 || points.endX > canvas.width ||
+                points.endY < 0 || points.endY > canvas.height) {
+                gameOver();
+                return;
+            }
+            
+            // 障害物との衝突とスレスレ判定
+            let closePass = false;
+            for (let obs of obstacles) {
+                if (lineRectCollision(points.startX, points.startY, points.endX, points.endY, obs)) {
+                    gameOver();
+                    return;
+                }
+                
+                // スレスレ判定（フリーエンド側のみ）
+                const freeX = player.pivotEnd === 'start' ? points.endX : points.startX;
+                const freeY = player.pivotEnd === 'start' ? points.endY : points.startY;
+                const dist = pointRectDistance(freeX, freeY, obs);
+                
+                if (dist < CLOSE_DISTANCE) {
+                    closePass = true;
+                }
+            }
+            
+            // コンボ判定
+            if (closePass) {
+                combo++;
+                showCombo();
+                score += combo * 10;
+            }
+            
+            // ゴール判定
+            const dx = points.endX - goal.x;
+            const dy = points.endY - goal.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < goal.radius) {
+                stageClear();
+            }
+        }
+        
+        // コンボ表示
+        function showCombo() {
+            const comboEl = document.getElementById('combo');
+            comboEl.textContent = `CLOSE! ${combo}x COMBO`;
+            comboEl.style.display = 'block';
+            setTimeout(() => {
+                comboEl.style.display = 'none';
+            }, 500);
+        }
+        
+        // ステージクリア
+        function stageClear() {
+            gameState = 'clear';
+            
+            // タイムボーナス
+            const timeBonus = Math.floor(timeLeft * 100);
+            score += timeBonus;
+            
+            // パーフェクトボーナス
+            if (perfectClear) {
+                score += 1000;
+            }
+            
+            // コンボボーナス
+            const comboBonus = combo * 50;
+            score += comboBonus;
+            
+            showMessage(`STAGE ${currentStage} CLEAR!`, 
+                `タイムボーナス: ${timeBonus}\n` +
+                `コンボボーナス: ${comboBonus}\n` +
+                (perfectClear ? 'パーフェクト: +1000\n' : '') +
+                `スコア: ${score}`);
+        }
+        
+        // ゲームオーバー
+        function gameOver() {
+            gameState = 'gameOver';
+            perfectClear = false;
+            showMessage('GAME OVER', `スコア: ${score}\nスペースキーでリトライ`);
+        }
+        
+        // 描画
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameState === 'waiting') return;
+            
+            // 障害物
+            for (let obs of obstacles) {
+                // グロー効果
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff0066';
+                ctx.fillStyle = '#ff0066';
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                
+                // 枠線
+                ctx.strokeStyle = '#ff00ff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+            }
+            ctx.shadowBlur = 0;
+            
+            // ゴール
+            if (goal) {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00ff00';
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(goal.x, goal.y, goal.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // ゴール中心
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+            
+            // プレイヤー（線）
+            const points = getLinePoints();
+            
+            // グロー効果
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00ffff';
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(points.startX, points.startY);
+            ctx.lineTo(points.endX, points.endY);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            
+            // 支点
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(player.pivotX, player.pivotY, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // フリーエンド
+            const freeX = player.pivotEnd === 'start' ? points.endX : points.startX;
+            const freeY = player.pivotEnd === 'start' ? points.endY : points.startY;
+            ctx.fillStyle = '#00ffff';
+            ctx.beginPath();
+            ctx.arc(freeX, freeY, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // UI更新
+            document.getElementById('stage').textContent = currentStage;
+            document.getElementById('score').textContent = score;
+            document.getElementById('comboCount').textContent = combo;
+            document.getElementById('timer').textContent = timeLeft.toFixed(2);
+        }
+        
+        // ゲーム開始
+        function startGame() {
+            gameState = 'playing';
+            currentStage = 1;
+            score = 0;
+            loadStage(currentStage);
+            document.getElementById('message').style.display = 'none';
+        }
+        
+        // 次のステージ
+        function nextStage() {
+            currentStage++;
+            loadStage(currentStage);
+            gameState = 'playing';
+            document.getElementById('message').style.display = 'none';
+        }
+        
+        // リトライ
+        function retry() {
+            loadStage(currentStage);
+            gameState = 'playing';
+            document.getElementById('message').style.display = 'none';
+        }
+        
+        // キーボード入力
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                
+                if (gameState === 'waiting') {
+                    startGame();
+                } else if (gameState === 'playing') {
+                    togglePivot();
+                } else if (gameState === 'clear') {
+                    nextStage();
+                } else if (gameState === 'gameOver') {
+                    retry();
+                } else if (gameState === 'allClear') {
+                    startGame();
+                }
+            }
+        });
+        
+        // ゲームループ
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            
+            if (deltaTime < 0.1) { // 異常な値を除外
+                update(deltaTime);
+            }
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        gameLoop(0);
+    </script>
+</body>
+</html>
