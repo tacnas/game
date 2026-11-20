@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f0">
+  <meta name="description" content="番号と出題範囲を選べる高校英単語クイズ。自分のCSVを読み込んで学習できます。">
+  <title>WORD RANGE — 英単語クイズ</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182923;
+      --muted: #6b7972;
+      --green: #245b46;
+      --green-dark: #174332;
+      --lime: #d9f277;
+      --paper: #f4f6f0;
+      --line: #e1e8df;
+      --card: #ffffff;
+      --soft: #f7f9f5;
+      --red: #b54b43;
+      --shadow: 0 22px 70px rgba(32, 58, 45, .09);
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(ellipse at 12% 12%, rgba(217, 242, 119, .24), transparent 27rem),
+        radial-gradient(ellipse at 92% 38%, rgba(179, 218, 195, .24), transparent 25rem),
+        var(--paper);
+      color: var(--ink);
+      font-family: Inter, "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+      line-height: 1.6;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, label:focus-within {
+      outline: 3px solid rgba(36, 91, 70, .25);
+      outline-offset: 3px;
+    }
+    .topbar {
+      width: min(1120px, calc(100% - 40px));
+      height: 84px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(36, 91, 70, .1);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; }
+    .brand-mark {
+      width: 36px; height: 36px; display: grid; place-items: center;
+      border-radius: 12px; background: var(--green); color: var(--lime);
+      font-size: 16px; font-weight: 900; letter-spacing: -.08em;
+    }
+    .brand-name { font-size: 13px; font-weight: 900; letter-spacing: .13em; }
+    .brand-sub { display: block; margin-top: -4px; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .06em; }
+    .top-note { color: var(--muted); font-size: 12px; font-weight: 650; }
+    main { width: min(980px, calc(100% - 40px)); margin: 0 auto; padding: 54px 0 76px; }
+    .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 31px; }
+    .eyebrow { margin: 0 0 12px; color: var(--green); font-size: 11px; font-weight: 850; letter-spacing: .17em; }
+    h1 { max-width: 650px; margin: 0; font-size: clamp(36px, 6vw, 64px); line-height: 1.13; letter-spacing: -.065em; }
+    h1 .accent { color: var(--green); }
+    .hero-copy { margin: 15px 0 0; color: var(--muted); font-size: 14px; }
+    .hero-stamp {
+      flex: 0 0 auto; width: 118px; height: 118px; display: grid; place-content: center;
+      border: 1px solid rgba(36, 91, 70, .2); border-radius: 50%; color: var(--green); text-align: center;
+      transform: rotate(8deg);
+    }
+    .hero-stamp strong { font-size: 29px; line-height: 1; letter-spacing: -.06em; }
+    .hero-stamp span { margin-top: 7px; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+    .app-card { overflow: hidden; border: 1px solid rgba(36, 91, 70, .11); border-radius: 24px; background: var(--card); box-shadow: var(--shadow); }
+    .card-top { padding: 26px 30px 21px; border-bottom: 1px solid var(--line); }
+    .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .card-heading h2 { margin: 0; font-size: 17px; letter-spacing: -.025em; }
+    .data-pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 99px; background: #eff6e9; color: var(--green); font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .data-dot { width: 7px; height: 7px; border-radius: 50%; background: #72a95b; }
+    .data-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .settings { padding: 25px 30px 29px; background: linear-gradient(180deg, #fff, #fcfdfb); }
+    .settings-grid { display: grid; grid-template-columns: 1.3fr .9fr; gap: 22px 27px; }
+    .field-label { display: block; margin: 0 0 9px; color: #46574e; font-size: 11px; font-weight: 850; letter-spacing: .04em; }
+    .range-row { display: flex; align-items: center; gap: 9px; }
+    .range-row input {
+      width: 100%; min-width: 0; height: 46px; padding: 0 13px; border: 1px solid var(--line); border-radius: 11px;
+      background: #fff; color: var(--ink); font-size: 15px; font-weight: 750;
+    }
+    .range-dash { color: #9ca9a0; font-weight: 800; }
+    .range-count { min-height: 20px; margin: 8px 0 0; color: var(--green); font-size: 11px; font-weight: 750; }
+    select {
+      width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px;
+      background: #fff; color: var(--ink); font-size: 13px; font-weight: 700;
+    }
+    .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: #f3f6f1; }
+    .mode-btn { min-height: 38px; padding: 7px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .mode-btn[aria-pressed="true"] { background: var(--green); color: white; box-shadow: 0 2px 5px rgba(23, 67, 50, .16); }
+    .data-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .file-label, .subtle-btn {
+      min-height: 39px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: white; color: #45574e;
+      font-size: 11px; font-weight: 800; transition: background .18s, border-color .18s, transform .18s;
+    }
+    .file-label:hover, .subtle-btn:hover { border-color: #b5c8b9; background: #f8fbf6; transform: translateY(-1px); }
+    .file-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    .subtle-btn:disabled { cursor: not-allowed; opacity: .45; transform: none; }
+    .privacy-note { flex: 1 1 100%; margin: 2px 0 0; color: #849189; font-size: 10px; }
+    .start-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 22px; }
+    .start-help { color: var(--muted); font-size: 11px; }
+    .primary-btn {
+      min-height: 49px; display: inline-flex; align-items: center; justify-content: center; gap: 17px;
+      padding: 0 20px; border: 0; border-radius: 12px; background: var(--green); color: white;
+      font-size: 13px; font-weight: 850; box-shadow: 0 7px 16px rgba(36, 91, 70, .16); transition: background .18s, transform .18s, box-shadow .18s;
+    }
+    .primary-btn:hover { background: var(--green-dark); transform: translateY(-1px); box-shadow: 0 10px 20px rgba(36, 91, 70, .2); }
+    .primary-btn:disabled { cursor: not-allowed; opacity: .45; transform: none; box-shadow: none; }
+    .arrow { font-size: 18px; line-height: 1; }
+    .stage { padding: 33px 30px 35px; }
+    .welcome { display: flex; align-items: center; gap: 22px; min-height: 125px; }
+    .welcome-icon { flex: 0 0 auto; width: 64px; height: 64px; display: grid; place-items: center; border-radius: 20px; background: var(--lime); color: var(--green); font-size: 28px; font-weight: 950; }
+    .welcome h3 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
+    .welcome p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .quiz-topline { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 25px; }
+    .question-meta { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .score-meta { color: var(--green); font-size: 11px; font-weight: 850; }
+    .progress-track { height: 7px; overflow: hidden; margin-top: 9px; border-radius: 99px; background: #edf1eb; }
+    .progress-value { width: 0; height: 100%; border-radius: inherit; background: var(--lime); transition: width .35s ease; }
+    .question-box { min-height: 205px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--soft); text-align: center; }
+    .question-label { margin: 0 0 11px; color: var(--green); font-size: 11px; font-weight: 850; letter-spacing: .08em; }
+    .question-word { margin: 0; font-size: clamp(28px, 5vw, 43px); font-weight: 850; line-height: 1.25; letter-spacing: -.04em; overflow-wrap: anywhere; }
+    .question-number { margin: 12px 0 0; color: #8a978f; font-size: 10px; font-weight: 700; }
+    .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+    .choice {
+      min-height: 56px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
+      text-align: left; font-size: 13px; font-weight: 750; transition: border-color .16s, background .16s, transform .16s;
+    }
+    .choice:hover:not(:disabled) { border-color: #91b39d; background: #f9fcf7; transform: translateY(-1px); }
+    .choice:disabled { cursor: default; }
+    .choice.correct { border-color: #78a961; background: #eff8e7; color: #315f26; }
+    .choice.incorrect { border-color: #d98d83; background: #fff1ef; color: #9f3e36; }
+    .feedback { display: flex; align-items: flex-start; gap: 10px; min-height: 58px; margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: #f1f6ed; color: #335a37; font-size: 12px; }
+    .feedback.wrong { background: #fff3f0; color: #93443b; }
+    .feedback-icon { flex: 0 0 auto; font-size: 17px; font-weight: 900; line-height: 1.1; }
+    .feedback strong { display: block; margin-bottom: 2px; font-size: 13px; }
+    .feedback-detail { color: #66756c; font-size: 11px; }
+    .next-row { display: flex; justify-content: flex-end; margin-top: 14px; }
+    .result { text-align: center; }
+    .result-kicker { margin: 4px 0 3px; color: var(--green); font-size: 11px; font-weight: 900; letter-spacing: .14em; }
+    .result h3 { margin: 0; font-size: 28px; letter-spacing: -.045em; }
+    .result-score { margin: 9px 0 4px; color: var(--green); font-size: 54px; font-weight: 900; letter-spacing: -.07em; line-height: 1.1; }
+    .result-caption { margin: 0; color: var(--muted); font-size: 12px; }
+    .missed-list { max-width: 580px; margin: 23px auto; padding: 0; list-style: none; text-align: left; }
+    .missed-item { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px; border-top: 1px solid var(--line); font-size: 12px; }
+    .missed-item:last-child { border-bottom: 1px solid var(--line); }
+    .missed-en { font-weight: 850; }
+    .missed-ja { color: var(--muted); text-align: right; }
+    .result-actions { display: flex; justify-content: center; }
+    .toast { position: fixed; right: 20px; bottom: 20px; z-index: 5; max-width: min(420px, calc(100% - 40px)); padding: 12px 16px; border-radius: 12px; background: #203b30; color: white; font-size: 12px; font-weight: 700; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity .2s, transform .2s; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .page-foot { display: flex; justify-content: space-between; gap: 20px; margin-top: 19px; color: #8a968f; font-size: 10px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 680px) {
+      .topbar { width: min(100% - 28px, 980px); height: 68px; }
+      main { width: min(100% - 28px, 980px); padding: 36px 0 48px; }
+      .hero { align-items: flex-start; margin-bottom: 23px; }
+      .hero-stamp { width: 76px; height: 76px; margin-top: 20px; }
+      .hero-stamp strong { font-size: 21px; }
+      .hero-stamp span { font-size: 8px; }
+      .hero-copy { max-width: 370px; font-size: 12px; }
+      .app-card { border-radius: 18px; }
+      .card-top { padding: 20px 18px 16px; }
+      .settings { padding: 20px 18px 22px; }
+      .settings-grid { grid-template-columns: 1fr; gap: 17px; }
+      .stage { padding: 24px 18px 26px; }
+      .welcome { min-height: 110px; gap: 14px; }
+      .welcome-icon { width: 52px; height: 52px; border-radius: 16px; font-size: 23px; }
+      .welcome h3 { font-size: 17px; }
+      .welcome p { font-size: 11px; }
+      .choices { grid-template-columns: 1fr; gap: 8px; }
+      .choice { min-height: 48px; }
+      .page-foot { flex-direction: column; gap: 4px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="WORD RANGE ホーム">
+      <span class="brand-mark" aria-hidden="true">W</span>
+      <span><span class="brand-name">WORD RANGE</span><span class="brand-sub">ENGLISH VOCAB QUIZ</span></span>
+    </a>
+    <span class="top-note">自分の単語帳で、範囲を決めて学習</span>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">STUDY SMART, ONE WORD AT A TIME</p>
+        <h1 id="page-title">英単語を、<span class="accent">使える力に。</span></h1>
+        <p class="hero-copy">番号で範囲を決めて、今日の自分にちょうどいい10問。</p>
+      </div>
+      <div class="hero-stamp" aria-label="1回10問">
+        <strong>10</strong><span>WORDS / ROUND</span>
+      </div>
+    </section>
+
+    <section class="app-card" aria-label="英単語クイズ">
+      <div class="card-top">
+        <div class="card-heading">
+          <h2>クイズの準備</h2>
+          <span class="data-pill"><span class="data-dot" aria-hidden="true"></span><span id="dataCount">お試し単語 10語</span></span>
+        </div>
+        <p class="data-note" id="dataNote">まずはお試し単語でプレイ。自分のCSVを読み込むと、番号範囲を選べます。</p>
+      </div>
+
+      <div class="settings" id="settingsPanel">
+        <div class="settings-grid">
+          <div>
+            <label class="field-label" for="rangeStart">出題する番号</label>
+            <div class="range-row">
+              <input id="rangeStart" type="number" min="1" max="1400" value="1" inputmode="numeric" aria-label="開始番号">
+              <span class="range-dash" aria-hidden="true">〜</span>
+              <input id="rangeEnd" type="number" min="1" max="1400" value="1400" inputmode="numeric" aria-label="終了番号">
+            </div>
+            <p class="range-count" id="rangeCount" aria-live="polite">この範囲のお試し単語：10語</p>
+          </div>
+          <div>
+            <label class="field-label" for="questionCount">1回の問題数</label>
+            <select id="questionCount">
+              <option value="5">5問</option>
+              <option value="10" selected>10問</option>
+              <option value="20">20問</option>
+              <option value="all">範囲内すべて</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">出題方向</span>
+            <div class="mode-tabs" role="group" aria-label="出題方向">
+              <button class="mode-btn" type="button" data-mode="en-ja" aria-pressed="true">英語 → 日本語</button>
+              <button class="mode-btn" type="button" data-mode="ja-en" aria-pressed="false">日本語 → 英語</button>
+            </div>
+          </div>
+          <div>
+            <span class="field-label">単語データ</span>
+            <div class="data-tools">
+              <label class="file-label" for="csvFile"><span aria-hidden="true">＋</span> CSVを読み込む
+                <input id="csvFile" type="file" accept=".csv,text/csv">
+              </label>
+              <button class="subtle-btn" type="button" id="templateBtn">CSV見本を保存</button>
+              <button class="subtle-btn" type="button" id="exportBtn" disabled>保存データを書き出す</button>
+              <button class="subtle-btn" type="button" id="resetDataBtn" hidden>お試し単語に戻す</button>
+              <p class="privacy-note">読み込んだ単語はこのブラウザ内に保存されます。サーバーへ送信されません。</p>
+            </div>
+          </div>
+        </div>
+        <div class="start-row">
+          <span class="start-help" id="startHelp">番号は1〜1400で指定できます。</span>
+          <button class="primary-btn" type="button" id="startBtn">クイズを始める <span class="arrow" aria-hidden="true">→</span></button>
+        </div>
+      </div>
+
+      <div class="stage" id="welcomeView">
+        <div class="welcome">
+          <div class="welcome-icon" aria-hidden="true">A</div>
+          <div>
+            <h3>準備ができたら、スタート。</h3>
+            <p>10問から気軽に。間違えた単語は最後にまとめて復習できます。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage" id="quizView" hidden>
+        <div class="quiz-topline">
+          <div style="flex:1">
+            <div class="question-meta" id="questionMeta">QUESTION 1 / 10</div>
+            <div class="progress-track" role="progressbar" aria-label="クイズの進み具合" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="progress-value" id="progressValue"></div>
+            </div>
+          </div>
+          <span class="score-meta" id="scoreMeta">正解 0</span>
+        </div>
+        <div class="question-box">
+          <p class="question-label" id="questionLabel">この英単語の意味は？</p>
+          <h3 class="question-word" id="questionWord"></h3>
+          <p class="question-number" id="questionNumber"></p>
+        </div>
+        <div class="choices" id="choices" role="group" aria-label="答えを選んでください"></div>
+        <div class="feedback" id="feedback" aria-live="polite" hidden>
+          <span class="feedback-icon" id="feedbackIcon" aria-hidden="true">✓</span>
+          <div><strong id="feedbackTitle"></strong><span class="feedback-detail" id="feedbackDetail"></span></div>
+        </div>
+        <div class="next-row"><button class="primary-btn" type="button" id="nextBtn" hidden>次の問題 <span class="arrow" aria-hidden="true">→</span></button></div>
+      </div>
+
+      <div class="stage result" id="resultView" hidden>
+        <p class="result-kicker">ROUND COMPLETE</p>
+        <h3 id="resultTitle">おつかれさま！</h3>
+        <p class="result-score" id="resultScore">0/10</p>
+        <p class="result-caption" id="resultCaption"></p>
+        <ul class="missed-list" id="missedList"></ul>
+        <div class="result-actions"><button class="primary-btn" type="button" id="againBtn">もう一度チャレンジ <span class="arrow" aria-hidden="true">↻</span></button></div>
+      </div>
+    </section>
+
+    <footer class="page-foot">
+      <span>CSV形式：番号, 英単語, 日本語</span>
+      <span>読み込んだ学習データは端末のブラウザに保存されます。</span>
+    </footer>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const STORAGE_KEY = "word-range-quiz.words.v1";
+      const SAMPLE_WORDS = [
+        { number: 1, english: "curious", japanese: "好奇心の強い" },
+        { number: 2, english: "gentle", japanese: "優しい" },
+        { number: 3, english: "narrow", japanese: "狭い" },
+        { number: 4, english: "repair", japanese: "修理する" },
+        { number: 5, english: "surface", japanese: "表面" },
+        { number: 6, english: "useful", japanese: "役に立つ" },
+        { number: 7, english: "wildlife", japanese: "野生生物" },
+        { number: 8, english: "wander", japanese: "歩き回る" },
+        { number: 9, english: "whisper", japanese: "ささやく" },
+        { number: 10, english: "youth", japanese: "若さ" }
+      ];
+
+      const $ = (selector) => document.querySelector(selector);
+      const rangeStart = $("#rangeStart");
+      const rangeEnd = $("#rangeEnd");
+      const questionCount = $("#questionCount");
+      const startBtn = $("#startBtn");
+      const csvFile = $("#csvFile");
+      let words = SAMPLE_WORDS.map((word) => ({ ...word }));
+      let usingSample = true;
+      let mode = "en-ja";
+      let deck = [];
+      let questionIndex = 0;
+      let score = 0;
+      let missed = [];
+      let answered = false;
+      let toastTimer;
+
+      function shuffle(items) {
+        const copy = [...items];
+        for (let i = copy.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      }
+
+      function showToast(message) {
+        const toast = $("#toast");
+        toast.textContent = message;
+        toast.classList.add("show");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2800);
+      }
+
+      function getRange() {
+        const start = Number.parseInt(rangeStart.value, 10);
+        const end = Number.parseInt(rangeEnd.value, 10);
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > 1400 || start > end) return null;
+        return { start, end };
+      }
+
+      function getAvailableWords() {
+        const range = getRange();
+        if (!range) return [];
+        return words.filter((word) => word.number >= range.start && word.number <= range.end);
+      }
+
+      function updateSettings() {
+        const range = getRange();
+        const available = getAvailableWords();
+        $("#rangeCount").textContent = range
+          ? `この範囲の単語：${available.length}語`
+          : "番号は1〜1400の範囲で、開始番号以下に終了番号を指定してください。";
+        $("#rangeCount").style.color = range ? "" : "var(--red)";
+        startBtn.disabled = !range || available.length === 0;
+        $("#startHelp").textContent = !range
+          ? "開始番号と終了番号を確認してください。"
+          : available.length === 0
+            ? "選んだ範囲に単語がありません。CSVを読み込むか範囲を広げてください。"
+            : available.length < 4
+              ? "この範囲から出題します。選択肢は登録済みの単語から作ります。"
+              : `この範囲から最大${questionCount.value === "all" ? available.length : Math.min(Number(questionCount.value), available.length)}問出題します。`;
+        $("#dataCount").textContent = `${usingSample ? "お試し単語" : "保存済み"} ${words.length}語`;
+        $("#dataNote").textContent = usingSample
+          ? "お試し単語でプレイできます。自分のCSVを読み込むと、番号範囲を選べます。"
+          : "読み込んだ単語はこのブラウザに保存されています。番号範囲を選んで出題できます。";
+        $("#exportBtn").disabled = usingSample || words.length === 0;
+        $("#resetDataBtn").hidden = usingSample;
+      }
+
+      function parseCsv(text) {
+        const source = text.replace(/^\uFEFF/, "");
+        const rows = [];
+        let row = [];
+        let value = "";
+        let quoted = false;
+        for (let i = 0; i < source.length; i += 1) {
+          const character = source[i];
+          if (quoted) {
+            if (character === '"' && source[i + 1] === '"') {
+              value += '"';
+              i += 1;
+            } else if (character === '"') {
+              quoted = false;
+            } else {
+              value += character;
+            }
+          } else if (character === '"' && value.length === 0) {
+            quoted = true;
+          } else if (character === ",") {
+            row.push(value.trim());
+            value = "";
+          } else if (character === "\n" || character === "\r") {
+            if (character === "\r" && source[i + 1] === "\n") i += 1;
+            row.push(value.trim());
+            if (row.some((cell) => cell !== "")) rows.push(row);
+            row = [];
+            value = "";
+          } else {
+            value += character;
+          }
+        }
+        row.push(value.trim());
+        if (row.some((cell) => cell !== "")) rows.push(row);
+        if (rows.length < 2) throw new Error("見出し行と単語データが必要です。");
+
+        const headers = rows.shift().map((cell) => cell.toLowerCase().replace(/[\s_・]/g, ""));
+        const findHeader = (choices) => headers.findIndex((header) => choices.includes(header));
+        const numberColumn = findHeader(["番号", "no", "number", "id"]);
+        const englishColumn = findHeader(["英単語", "英語", "english", "word"]);
+        const japaneseColumn = findHeader(["日本語", "意味", "訳", "japanese", "meaning"]);
+        if ([numberColumn, englishColumn, japaneseColumn].some((index) => index < 0)) {
+          throw new Error("列名は「番号,英単語,日本語」にしてください。");
+        }
+
+        const byNumber = new Map();
+        for (const cells of rows) {
+          const number = Number.parseInt(cells[numberColumn], 10);
+          const english = (cells[englishColumn] || "").trim();
+          const japanese = (cells[japaneseColumn] || "").trim();
+          if (!Number.isInteger(number) || number < 1 || number > 1400 || !english || !japanese) continue;
+          byNumber.set(number, { number, english, japanese });
+        }
+        const parsed = [...byNumber.values()].sort((a, b) => a.number - b.number);
+        if (parsed.length === 0) throw new Error("有効な単語がありません。番号・英単語・日本語を確認してください。");
+        return parsed;
+      }
+
+      function csvCell(value) {
+        const string = String(value);
+        return /[",\r\n]/.test(string) ? `"${string.replace(/"/g, '""')}"` : string;
+      }
+
+      function downloadCsv(items, filename) {
+        const rows = [["番号", "英単語", "日本語"], ...items.map((word) => [word.number, word.english, word.japanese])];
+        const csv = "\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+        const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function persistWords() {
+        usingSample = false;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function loadSavedWords() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (!saved) return;
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const valid = parsed.filter((word) => Number.isInteger(word.number) && word.number >= 1 && word.number <= 1400 && word.english && word.japanese);
+            if (valid.length > 0) {
+              words = valid;
+              usingSample = false;
+            }
+          }
+        } catch (error) {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      }
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        document.querySelectorAll("[data-mode]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
+        });
+      }
+
+      function startQuiz() {
+        const available = getAvailableWords();
+        if (!available.length) return;
+        const requested = questionCount.value === "all" ? available.length : Number(questionCount.value);
+        const size = Math.min(requested, available.length);
+        deck = shuffle(available).slice(0, size).map((word) => {
+          const answerText = mode === "en-ja" ? word.japanese : word.english;
+          const distractors = shuffle(words.filter((candidate) => candidate.number !== word.number && (mode === "en-ja" ? candidate.japanese !== answerText : candidate.english !== answerText))).slice(0, 3);
+          return { word, options: shuffle([word, ...distractors]), chosenNumber: null };
+        });
+        questionIndex = 0;
+        score = 0;
+        missed = [];
+        answered = false;
+        $("#settingsPanel").hidden = true;
+        $("#welcomeView").hidden = true;
+        $("#resultView").hidden = true;
+        $("#quizView").hidden = false;
+        renderQuestion();
+        document.querySelector("#quizView").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function renderQuestion() {
+        const current = deck[questionIndex];
+        const correctAnswer = mode === "en-ja" ? current.word.japanese : current.word.english;
+        $("#questionMeta").textContent = `QUESTION ${questionIndex + 1} / ${deck.length}`;
+        $("#scoreMeta").textContent = `正解 ${score}`;
+        $("#questionLabel").textContent = mode === "en-ja" ? "この英単語の意味は？" : "この意味の英単語は？";
+        $("#questionWord").textContent = mode === "en-ja" ? current.word.english : current.word.japanese;
+        $("#questionNumber").textContent = `単語番号 ${current.word.number}`;
+        const progress = Math.round((questionIndex / deck.length) * 100);
+        $("#progressValue").style.width = `${progress}%`;
+        $(".progress-track").setAttribute("aria-valuenow", String(progress));
+
+        const choices = $("#choices");
+        choices.replaceChildren();
+        current.options.forEach((option) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "choice";
+          button.textContent = mode === "en-ja" ? option.japanese : option.english;
+          button.disabled = answered;
+          if (answered && option.number === current.word.number) button.classList.add("correct");
+          if (answered && option.number === current.chosenNumber && option.number !== current.word.number) button.classList.add("incorrect");
+          button.addEventListener("click", () => answerQuestion(option));
+          choices.appendChild(button);
+        });
+
+        $("#feedback").hidden = !answered;
+        $("#nextBtn").hidden = !answered;
+        if (answered) {
+          const isCorrect = current.chosenNumber === current.word.number;
+          $("#feedback").classList.toggle("wrong", !isCorrect);
+          $("#feedbackIcon").textContent = isCorrect ? "✓" : "!";
+          $("#feedbackTitle").textContent = isCorrect ? "正解！" : "おしい！正解はこちら";
+          $("#feedbackDetail").textContent = `${current.word.english} — ${current.word.japanese}`;
+          $("#nextBtn").innerHTML = questionIndex === deck.length - 1
+            ? '結果を見る <span class="arrow" aria-hidden="true">→</span>'
+            : '次の問題 <span class="arrow" aria-hidden="true">→</span>';
+        }
+      }
+
+      function answerQuestion(option) {
+        if (answered) return;
+        answered = true;
+        const current = deck[questionIndex];
+        current.chosenNumber = option.number;
+        if (option.number === current.word.number) {
+          score += 1;
+        } else {
+          missed.push(current.word);
+        }
+        renderQuestion();
+      }
+
+      function finishQuiz() {
+        $("#quizView").hidden = true;
+        $("#resultView").hidden = false;
+        $("#settingsPanel").hidden = false;
+        $("#welcomeView").hidden = true;
+        $("#resultScore").textContent = `${score}/${deck.length}`;
+        const percent = Math.round((score / deck.length) * 100);
+        $("#resultTitle").textContent = percent === 100 ? "パーフェクト！" : percent >= 70 ? "いい調子！" : "ここから伸ばそう。";
+        $("#resultCaption").textContent = missed.length === 0 ? "すべて正解。すばらしい！" : `${missed.length}語を復習して、もう一度チャレンジしよう。`;
+        const list = $("#missedList");
+        list.replaceChildren();
+        missed.forEach((word) => {
+          const item = document.createElement("li");
+          item.className = "missed-item";
+          const english = document.createElement("span");
+          english.className = "missed-en";
+          english.textContent = `${word.number}. ${word.english}`;
+          const japanese = document.createElement("span");
+          japanese.className = "missed-ja";
+          japanese.textContent = word.japanese;
+          item.append(english, japanese);
+          list.appendChild(item);
+        });
+        $("#progressValue").style.width = "100%";
+        $(".progress-track").setAttribute("aria-valuenow", "100");
+        $("#resultView").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function continueQuiz() {
+        if (questionIndex < deck.length - 1) {
+          questionIndex += 1;
+          answered = false;
+          renderQuestion();
+        } else {
+          finishQuiz();
+        }
+      }
+
+      csvFile.addEventListener("change", () => {
+        const file = csvFile.files && csvFile.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            words = parseCsv(String(reader.result || ""));
+            const saved = persistWords();
+            updateSettings();
+            showToast(saved
+              ? `${words.length}語を読み込み、このブラウザに保存しました。`
+              : `${words.length}語を読み込みました。保存できないためCSVを手元に保管してください。`);
+          } catch (error) {
+            showToast(error instanceof Error ? error.message : "CSVを読み込めませんでした。");
+          } finally {
+            csvFile.value = "";
+          }
+        };
+        reader.onerror = () => showToast("ファイルを読み込めませんでした。");
+        reader.readAsText(file, "UTF-8");
+      });
+
+      $("#templateBtn").addEventListener("click", () => downloadCsv(SAMPLE_WORDS, "word-range-template.csv"));
+      $("#exportBtn").addEventListener("click", () => downloadCsv(words, "my-vocabulary.csv"));
+      $("#resetDataBtn").addEventListener("click", () => {
+        if (!window.confirm("このブラウザに保存した単語を消して、お試し単語に戻しますか？")) return;
+        localStorage.removeItem(STORAGE_KEY);
+        words = SAMPLE_WORDS.map((word) => ({ ...word }));
+        usingSample = true;
+        rangeStart.value = "1";
+        rangeEnd.value = "1400";
+        updateSettings();
+        showToast("お試し単語に戻しました。");
+      });
+
+      document.querySelectorAll("[data-mode]").forEach((button) => {
+        button.addEventListener("click", () => setMode(button.dataset.mode));
+      });
+      rangeStart.addEventListener("input", updateSettings);
+      rangeEnd.addEventListener("input", updateSettings);
+      questionCount.addEventListener("change", updateSettings);
+      startBtn.addEventListener("click", startQuiz);
+      $("#nextBtn").addEventListener("click", continueQuiz);
+      $("#againBtn").addEventListener("click", () => {
+        $("#resultView").hidden = true;
+        $("#welcomeView").hidden = false;
+        updateSettings();
+        $("#settingsPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+
+      loadSavedWords();
+      updateSettings();
+    })();
+  </script>
+</body>
+</html>
+
